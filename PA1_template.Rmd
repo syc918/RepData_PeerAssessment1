@@ -5,21 +5,108 @@ output:
     keep_md: true
 ---
 
-
 ## Loading and preprocessing the data
+```{r load, message=FALSE, warning=FALSE}
+library(dplyr)
+library(ggplot2)
 
+# Check if file exists and is uncompressed
+if (file.exists("activity.zip") && !file.exists("activity.csv")) {
+  unzip("activity.zip")
+}
 
+# Load raw data into data frame
+activity <- read.csv("activity.csv")
+```
 
 ## What is mean total number of steps taken per day?
 
+```{r q1, messsage=FALSE, warning=FALSE}
+# Group by date and sum up steps ignoring missing values
+stepsummary <- activity %>%
+  group_by(date) %>%
+  summarise(totalsteps=sum(steps, na.rm = T))
 
+# Plot histogram
+ggplot(stepsummary, aes(x=totalsteps)) + 
+  geom_histogram() +
+  xlab("Total Steps") + 
+  ylab("Frequency") +
+  ggtitle("Total Number of Steps Per Day")
+
+``` 
+  
+Mean number of steps per day: `r mean(stepsummary$totalsteps)`  
+Median number of steps per day: `r median(stepsummary$totalsteps)`  
 
 ## What is the average daily activity pattern?
 
+```{r q2}
+# Group by date and sum up steps ignoring missing values
+intervalavg <- activity %>%
+  group_by(interval) %>%
+  summarise(avgsteps=mean(steps, na.rm = T))
 
+# Plot time series of steps per five-minute intervals
+ggplot(intervalavg, aes(x=interval, y=avgsteps)) + 
+  geom_line() +
+  xlab("5-min Interval") + 
+  ylab("Avg Number of Steps Taken") +
+  ggtitle("Avg Number of Steps Taken Per 5-minute Interval")
+
+```
+  
+The 5-minute interval, on average across all the days in the dataset, that contained the maximum number of steps was: `r intervalavg[which.max(intervalavg$avgsteps),]$interval`.  
 
 ## Imputing missing values
 
+There are `r sum(is.na(activity$steps))` of missing values in the dataset.  
+  
+Using the mean of the corresponding 5-minute interval to impute missing values, we construct a new dataset.
 
+```{r imputing}
+
+# Impute NAs in the original dataset using the 5-min interval average
+imputed <- activity %>%
+  left_join(intervalavg, by="interval") %>%
+  mutate(steps=ifelse(is.na(steps), avgsteps, steps)) %>%
+  select(steps, date, interval)
+
+# Calculate the total num of steps per date
+impstepsummary <- imputed %>%
+  group_by(date) %>%
+  summarise(totalsteps=sum(steps))
+
+# Plot histogram using imputed values
+ggplot(impstepsummary, aes(x=totalsteps)) + 
+  geom_histogram() +
+  xlab("Total Steps") + 
+  ylab("Frequency") +
+  ggtitle("Total Number of Steps Per Day - Imputed")
+
+```
+  
+Mean number of steps per day: `r sprintf("%0.2f", mean(impstepsummary$totalsteps))`  
+Median number of steps per day: `r sprintf("%0.2f", median(impstepsummary$totalsteps))`  
+
+These values are different from the original dataset. Imputing the values has caused the mean and median to increase compared to the original dataset. This is because there are a lot more periods with non-zero days as a result which can be seen by the drop in the 0 bucket of the histogram.  
 
 ## Are there differences in activity patterns between weekdays and weekends?
+
+```{r weekends}
+
+# Label each entry with either weekday or weekend
+weekactivity <- imputed %>%
+  mutate(dayofweek=weekdays(as.Date(date, "%Y-%m-%d"))) %>%
+  mutate(daygroup=ifelse(dayofweek=="Saturday"|dayofweek=="Sunday", "weekend", "weekday")) %>%
+  group_by(daygroup, interval) %>%
+  summarise(avgsteps=mean(steps))
+
+# Create a faceted plot of weekday vs weekend average steps per 5 min interval
+ggplot(weekactivity, aes(x=interval, y=avgsteps)) + 
+  geom_line() + 
+  facet_grid(daygroup ~ .) + 
+  xlab("Interval") + 
+  ylab("Number of Steps") +
+  ggtitle("Avg Number of Steps Taken Per 5-minute Interval")
+```
